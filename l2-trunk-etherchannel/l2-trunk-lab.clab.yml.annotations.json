@@ -1,0 +1,224 @@
+{
+  "freeTextAnnotations": [
+    {
+      "id": "freeText_l2_title",
+      "text": "802.1Q Trunking & EtherChannel  ·  three parallel links per pair — STP blocks two of three until you bundle them",
+      "position": {
+        "x": 95,
+        "y": 40
+      },
+      "fontSize": 14,
+      "fontColor": "#ffffff",
+      "fontWeight": "bold",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_l2_po1",
+      "text": "Po1  ·  LACP (IEEE 802.3ad)  —  SW1 active / SW2 passive",
+      "position": {
+        "x": 150,
+        "y": 330
+      },
+      "fontSize": 13,
+      "fontColor": "#00b3ff",
+      "fontWeight": "bold",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_l2_po2",
+      "text": "Po2  ·  PAgP (Cisco)  —  SW1 desirable / SW3 auto",
+      "position": {
+        "x": 540,
+        "y": 330
+      },
+      "fontSize": 13,
+      "fontColor": "#d4ff00",
+      "fontWeight": "bold",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_l2_sw1_role",
+      "text": "SW1 · distribution · initiates BOTH bundles",
+      "position": {
+        "x": 320,
+        "y": 500
+      },
+      "fontSize": 12,
+      "fontColor": "#ffffff",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_l2_vlan10",
+      "text": "VLAN 10 (USERS) · 10.10.10.0/24 — host-a ↔ host-b MUST ping",
+      "position": {
+        "x": 120,
+        "y": 150
+      },
+      "fontSize": 12,
+      "fontColor": "#00ff88",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_l2_vlan20",
+      "text": "VLAN 20 (SERVERS) · 10.10.20.0/24\nhost-c is ISOLATED — no router anywhere.\nIts unreachability is the PROOF, not a fault.",
+      "position": {
+        "x": 690,
+        "y": 130
+      },
+      "fontSize": 12,
+      "fontColor": "#ff8c00",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_l2_native",
+      "text": "Native VLAN 99 on every trunk — created but assigned to NO port,\nwhich is what defeats double-tagging VLAN hopping.",
+      "position": {
+        "x": 95,
+        "y": 560
+      },
+      "fontSize": 12,
+      "fontColor": "#00b3ff",
+      "fontWeight": "normal",
+      "fontStyle": "italic",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    }
+  ],
+  "freeShapeAnnotations": [
+    {
+      "id": "freeShape_l2_po1",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 145,
+        "y": 205
+      },
+      "width": 250,
+      "height": 145,
+      "fillColor": "#00b3ff",
+      "fillOpacity": 0.14,
+      "borderColor": "#00b3ff",
+      "borderWidth": 1,
+      "borderStyle": "solid",
+      "rotation": 0,
+      "zIndex": -1
+    },
+    {
+      "id": "freeShape_l2_po2",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 430,
+        "y": 205
+      },
+      "width": 250,
+      "height": 145,
+      "fillColor": "#d4ff00",
+      "fillOpacity": 0.14,
+      "borderColor": "#d4ff00",
+      "borderWidth": 1,
+      "borderStyle": "solid",
+      "rotation": 0,
+      "zIndex": -1
+    },
+    {
+      "id": "freeShape_l2_vlan20",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 655,
+        "y": 55
+      },
+      "width": 180,
+      "height": 120,
+      "fillColor": "#ff8c00",
+      "fillOpacity": 0.16,
+      "borderColor": "#ff8c00",
+      "borderWidth": 1,
+      "borderStyle": "dashed",
+      "rotation": 0,
+      "zIndex": -1
+    }
+  ],
+  "trafficRateAnnotations": [],
+  "groupStyleAnnotations": [],
+  "networkNodeAnnotations": [],
+  "nodeAnnotations": [
+    {
+      "id": "host-a",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 165,
+        "y": 90
+      },
+      "icon": "server"
+    },
+    {
+      "id": "host-b",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 530,
+        "y": 90
+      },
+      "icon": "server"
+    },
+    {
+      "id": "host-c",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 700,
+        "y": 90
+      },
+      "icon": "server"
+    },
+    {
+      "id": "sw2",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 230,
+        "y": 250
+      },
+      "icon": "switch"
+    },
+    {
+      "id": "sw3",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 570,
+        "y": 250
+      },
+      "icon": "switch"
+    },
+    {
+      "id": "sw1",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 400,
+        "y": 440
+      },
+      "icon": "switch"
+    }
+  ],
+  "edgeAnnotations": [],
+  "aliasEndpointAnnotations": [],
+  "viewerSettings": {}
+}

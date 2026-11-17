@@ -1,0 +1,560 @@
+# =============================================================================
+#  802.1Q TRUNKING & ETHERCHANNEL fault catalogue — used by ../tools/labctl.py
+# =============================================================================
+#  Assumes the KNOWN-GOOD baseline is loaded
+#  (`labctl.py l2-trunk-etherchannel baseline`):
+#
+#    VLANs 10 (USERS), 20 (SERVERS), 99 (NATIVE-UNUSED) on all three switches,
+#    VTP transparent everywhere.
+#    Po1 = SW1 <-> SW2, LACP, three members (SW1 active / SW2 passive)
+#    Po2 = SW1 <-> SW3, PAgP, three members (SW1 desirable / SW3 auto)
+#    Both Port-channels: dot1q trunk, native VLAN 99, allowed 10,20,99.
+#    host-a  10.10.10.11/24  VLAN 10, SW2 E1/0
+#    host-b  10.10.10.12/24  VLAN 10, SW3 E1/0
+#    host-c  10.10.20.13/24  VLAN 20, SW3 E1/1
+#
+#  What "healthy" looks like (memorise this before you break anything):
+#    sw1# show etherchannel summary
+#         1   Po1(SU)   LACP   Et0/1(P) Et0/2(P) Et0/3(P)
+#         2   Po2(SU)   PAgP   Et1/0(P) Et1/1(P) Et1/2(P)
+#         -> (SU) = layer-2, in Use.  (P) = bundled.  ALL SIX members (P).
+#    sw1# show interfaces trunk
+#         Po1 and Po2 both 'trunking', 802.1q, Native vlan 99,
+#         allowed / active / forwarding all read "10,20,99".
+#    host-a -> host-b  PINGS.        (proves VLAN 10 crosses both bundles)
+#    host-c -> host-a  DOES NOT PING. (correct: no router, VLAN 20 is an island)
+#    NOTHING is in spanning-tree BLK: once bundled, the topology is a
+#    loop-free tree SW2 - SW1 - SW3.
+#
+#  Convergence (measured on this topology, IOS-XE 17.16):
+#    LACP/PAgP bundling  ~5-15s      VLAN database changes  near-instant
+#    RSTP re-convergence ~3-30s      DTP re-negotiation     up to ~30s
+#    Allow 30s after a break and 30s after a fix. Port-security err-disable
+#    is INSTANT but only once the host sends a frame -- ping to trigger it.
+#
+#  ⚠ Five verification traps in this topology, every one of which produced a
+#    FALSE result at least once while this catalogue was being built:
+#    * `show interfaces status` reports IOL ports with NO CABLE AT ALL as
+#      "connected" (e.g. sw1 Et1/3, which the topology never links). Never use
+#      "connected" as proof a link exists -- use `show cdp neighbors` or the
+#      topology file.
+#    * READ THE MEMBER FLAG, do not assume the failure mode. On THIS platform a
+#      failed bundle fails CLOSED -- members sit at (w) "waiting to be
+#      aggregated" and forward nothing, so connectivity dies. On many Catalyst
+#      platforms the same misconfiguration drops members to (I) "stand-alone",
+#      where they forward INDIVIDUALLY and everything still pings at reduced
+#      bandwidth. (w), (I), (s) and (D) are four different outcomes and only one
+#      keeps traffic flowing -- so ping tells you nothing useful about
+#      EtherChannel health either way. `show etherchannel summary` does.
+#      (Verified on IOS-XE 17.16 via lacp-passive-passive and
+#      etherchannel-mode-on-mismatch, which produce (w) and (s) respectively.)
+#    * `show interfaces trunk` lists ONLY ports that are currently trunking.
+#      A port that stopped trunking does not appear as "broken" -- it simply
+#      VANISHES from the output. An empty table is the symptom.
+#    * Configuration applied to a Port-channel propagates DOWN to its members,
+#      but the reverse is not true, and the two can silently disagree. Always
+#      read `show run interface Port-channelN` AND one member.
+#    * host-c can never ping anything, at baseline or broken -- it is alone in
+#      VLAN 20 on a different subnet with no router. Do not use it as a
+#      control; use host-a -> host-b.
+#
+#  Add your own: copy an entry, give it a unique id. Keep `fix` an exact
+#  inverse (and if it genuinely cannot be, say so in `explain`).
+# =============================================================================
+faults:
+
+  # -------------------------------------------------- 802.1Q trunking (3.1.a)
+  - id: allowed-vlan-pruned
+    name: "VLAN 10 removed from the allowed list on Po1"
+    topic: "3.1.a"
+    difficulty: easy
+    symptom: "host-a can no longer ping host-b. Both EtherChannels are up with
+              all six members bundled, both Port-channels still say 'trunking',
+              and VLAN 10 is still in every switch's VLAN database."
+    hint: "The trunk is up and the VLAN exists on both switches. A trunk does
+           not have to carry every VLAN it knows about -- what decides which
+           ones actually cross it?"
+    explain: "`switchport trunk allowed vlan` is an explicit whitelist. Removing
+              10 leaves the trunk perfectly healthy for VLANs 20 and 99 while
+              silently discarding all VLAN 10 traffic -- there is no log, no
+              interface state change and no EtherChannel symptom. The giveaway
+              is the three-line block at the bottom of `show interfaces trunk`:
+              'allowed', 'allowed and active', and 'forwarding and not pruned'
+              are DIFFERENT lists, and reading only the first one is how people
+              miss this. Note the asymmetry: only SW1 was changed, but the VLAN
+              is dead in BOTH directions, because a trunk drops on ingress as
+              well as egress."
+    find: "`show interfaces trunk` on sw1 -- Po1 reads '20,99' where Po2 still
+           reads '10,20,99'. That difference between the two bundles, on a
+           switch where everything else matches, localises it immediately."
+    break:
+      - node: sw1
+        lines: ["interface Port-channel1", " switchport trunk allowed vlan 20,99"]
+    fix:
+      - node: sw1
+        lines: ["interface Port-channel1", " switchport trunk allowed vlan 10,20,99"]
+
+  - id: native-vlan-mismatch
+    name: "Native VLAN changed on one end of Po2"
+    topic: "3.1.a"
+    difficulty: med
+    symptom: "A configuration audit flags that SW1 and SW3 disagree about the
+              native VLAN on Po2. NOTHING is broken: host-a still pings host-b,
+              Po2 is still bundled and trunking, all three VLAN lists are
+              correct, and there is not a single log message. You have to decide
+              whether this is a real problem."
+    hint: "Which single VLAN crosses a dot1q trunk UNTAGGED, and what happens to
+           those untagged frames when the two ends label them differently? Then
+           ask why the VLANs you actually care about are unaffected."
+    explain: "The native VLAN is the one VLAN whose frames cross a dot1q trunk
+              WITHOUT a tag. SW1 calls it 99 and SW3 calls it 1, so every
+              untagged frame SW1 sends in VLAN 99 is received by SW3 into VLAN 1
+              and vice versa -- **two broadcast domains silently stitched
+              together across the trunk**. That is a security problem before it
+              is a connectivity one: it is the basis of the double-tagging
+              VLAN-hopping attack, and it is why the native VLAN should always
+              be an unused VLAN.
+              **Why nothing appears broken here** is the lesson. VLANs 10 and 20
+              are TAGGED in both directions, so they are completely unaffected --
+              only the native VLAN is merged, and in this lab VLAN 99 has no
+              ports and VLAN 1 has no hosts. A native VLAN mismatch damages the
+              VLAN nobody is looking at.
+              ⚠ **Verified on IOS-XE 17.16, and this corrects the textbook.**
+              The documented behaviour is that the switch detects and reports
+              this -- %CDP-4-NATIVE_VLAN_MISMATCH from CDP, and
+              %SPANTREE-2-RECV_PVID_ERR from PVST+ putting the port into a
+              PVID-inconsistent blocking state. On this platform **none of that
+              happens**: after several minutes with CDP confirmed running and
+              neighbours discovered, and spanning-tree in rapid-pvst mode,
+              `show spanning-tree inconsistentports` reports ZERO, the log is
+              empty, and the port keeps forwarding every VLAN. Know the
+              self-reporting behaviour for the exam; do not RELY on it in the
+              field. The only dependable detection is comparing the two ends."
+    find: "`show interfaces trunk` on sw1 and sw3 and compare the 'Native vlan'
+           column -- 99 on sw1, 1 on sw3. That comparison is the ONLY reliable
+           evidence here. (`show spanning-tree inconsistentports` and
+           `show logging` are the textbook checks and are worth running, but on
+           this platform they stay empty -- see the explanation.)"
+    break:
+      - node: sw3
+        lines: ["interface Port-channel2", " switchport trunk native vlan 1"]
+    fix:
+      - node: sw3
+        lines: ["interface Port-channel2", " switchport trunk native vlan 99"]
+
+  - id: trunk-forced-to-access
+    name: "Po1 forced back to an access port on SW2"
+    topic: "3.1.a"
+    difficulty: med
+    symptom: "host-a cannot reach host-b. Po1 is still bundled with all three
+              members (P), the cable is fine, and SW1 still believes the link is
+              a trunk."
+    hint: "SW1 is tagging frames. Ask what SW2 now believes the link is, and
+           what a switch does with a tagged frame that arrives on a port which
+           is not expecting tags."
+    explain: "`switchport mode access` overrides the trunk configuration without
+              deleting it -- the `switchport trunk ...` lines stay in the
+              running-config, which is exactly why this is hard to spot in a
+              `show run`. SW2 now expects untagged frames in VLAN 1, while SW1
+              keeps tagging for VLANs 10/20/99, so nothing crosses. The lesson
+              is that trunk configuration is INERT until the mode selects it:
+              always verify with `show interfaces trunk` (operational state)
+              rather than `show run` (intent). Note Po1 stays bundled --
+              EtherChannel negotiation is independent of trunking, so a healthy
+              `show etherchannel summary` proves nothing about VLAN transport."
+    find: "`show interfaces trunk` on sw2 -- the table is EMPTY, Po1 has vanished
+           from it. `show interfaces Port-channel1 switchport` shows
+           'Operational Mode: static access' while sw1 shows 'trunk'."
+    break:
+      - node: sw2
+        lines: ["interface Port-channel1", " switchport mode access"]
+    fix:
+      - node: sw2
+        lines: ["interface Port-channel1", " switchport mode trunk"]
+
+  - id: dtp-auto-auto-deadlock
+    name: "Both ends of Po2 left to negotiate as dynamic auto"
+    topic: "3.1.a"
+    difficulty: med
+    symptom: "host-a cannot reach host-b. Po2 is still bundled and both ends are
+              configured identically -- which is what makes this one
+              counter-intuitive."
+    hint: "Both switches are willing to trunk if asked. Who is doing the
+           asking?"
+    explain: "DTP has two negotiating modes: `dynamic desirable` ACTIVELY asks
+              to form a trunk, `dynamic auto` only ANSWERS if asked. Set both
+              ends to auto and neither ever initiates, so the link silently
+              settles as an ACCESS port in VLAN 1 -- the auto/auto deadlock.
+              The full matrix worth memorising: desirable+desirable, and
+              desirable+auto, and trunk+(desirable|auto) all trunk;
+              auto+auto does NOT. The wider lesson is that a link where both
+              ends carry identical configuration can still be wrong -- with
+              negotiated protocols, 'matching' is not the same as 'correct'.
+              This is also the argument for configuring `switchport mode trunk`
+              plus `switchport nonegotiate` on infrastructure links and never
+              relying on DTP at all."
+    find: "`show interfaces Port-channel2 switchport` on either switch --
+           'Administrative Mode: dynamic auto' and, critically, 'Operational
+           Mode: static access'. `show interfaces trunk` no longer lists Po2."
+    break:
+      - node: sw1
+        lines: ["interface Port-channel2", " switchport mode dynamic auto"]
+      - node: sw3
+        lines: ["interface Port-channel2", " switchport mode dynamic auto"]
+    fix:
+      - node: sw1
+        lines: ["interface Port-channel2", " switchport mode trunk"]
+      - node: sw3
+        lines: ["interface Port-channel2", " switchport mode trunk"]
+
+  - id: vlan-missing-from-database
+    name: "VLAN 10 deleted from SW3's VLAN database"
+    topic: "3.1.a"
+    difficulty: easy
+    symptom: "host-a cannot reach host-b. host-c (VLAN 20) is unaffected. Both
+              bundles are up, both trunks still list 10 in their allowed VLAN
+              list, and SW3's access port to host-b still says 'switchport
+              access vlan 10' in the running-config."
+    hint: "The trunk is allowed to carry VLAN 10 and the port is assigned to
+           VLAN 10. Does VLAN 10 actually EXIST on this switch?"
+    explain: "Allowing a VLAN on a trunk and assigning a port to it are both
+              just references -- the VLAN itself must exist in the local VLAN
+              database. Delete it and the access port goes 'inactive' while
+              still displaying its VLAN assignment in `show run`, and the trunk
+              stops carrying the VLAN even though the allowed list is unchanged.
+              This is why `show interfaces trunk` prints THREE separate lists:
+              'allowed' (what you configured) vs 'allowed and active in
+              management domain' (what actually exists) -- the gap between those
+              two lines IS this fault. In VTP transparent mode, which this lab
+              uses, nothing will recreate the VLAN for you."
+    find: "`show vlan brief` on sw3 -- no VLAN 10. `show interfaces
+           Ethernet1/0 switchport` shows the port assigned to an inactive VLAN.
+           `show interfaces trunk` on sw3: allowed lists 10, 'allowed and
+           active' does not."
+    break:
+      - node: sw3
+        lines: ["no vlan 10"]
+    fix:
+      - node: sw3
+        lines: ["vlan 10", " name USERS"]
+
+  - id: vlan-suspended
+    name: "VLAN 10 suspended rather than deleted on SW2"
+    topic: "3.1.a"
+    difficulty: med
+    symptom: "host-a cannot reach host-b. VLAN 10 IS present in `show vlan
+              brief` on SW2, the access port is in it, both trunks allow it and
+              both bundles are healthy."
+    hint: "The VLAN is there. Read the whole line in `show vlan brief`, not just
+           the ID and the name."
+    explain: "A VLAN has a STATE as well as an existence. `state suspend` leaves
+              the VLAN in the database, still shown against its ports, but stops
+              it forwarding anywhere on the switch -- `show vlan brief` prints
+              'suspended' in the Status column instead of 'active'. It is a
+              nastier version of deleting the VLAN precisely because every
+              command you would normally reach for still shows the VLAN present.
+              Contrast with `vlan-missing-from-database`: same end result for
+              traffic, completely different evidence. Whenever a VLAN 'exists'
+              but does not work, read the Status column before anything else."
+    find: "`show vlan brief` on sw2 -- VLAN 10's Status reads 'suspended', not
+           'active'. `show interfaces trunk` on sw2: 10 is allowed but missing
+           from 'allowed and active in management domain'."
+    break:
+      - node: sw2
+        lines: ["vlan 10", " state suspend"]
+    fix:
+      - node: sw2
+        lines: ["vlan 10", " no state suspend"]
+
+  - id: access-port-wrong-vlan
+    name: "host-b's access port moved to the wrong VLAN"
+    topic: "3.1.a"
+    difficulty: easy
+    symptom: "host-a cannot ping host-b. Every trunk, bundle and VLAN database
+              in the lab is correct and unchanged."
+    hint: "Everything between the switches is fine. Work outwards to the very
+           last hop -- which VLAN is the host actually in?"
+    explain: "The simplest fault in the catalogue and, in production, one of the
+              most common: the access port was moved to VLAN 20. host-b is now
+              an island -- it is in VLAN 20 with a 10.10.10.x address, so it
+              cannot reach VLAN 10 (wrong VLAN) and cannot reach host-c either
+              (right VLAN, wrong subnet). The teaching point is METHOD: when
+              infrastructure checks all pass, stop re-checking them and follow
+              the frame to its final port. `show mac address-table` is the
+              fastest tool -- it tells you which VLAN a MAC was actually learned
+              in, which is ground truth rather than intent."
+    find: "`show mac address-table | include 10` on sw3 shows host-b's MAC
+           learned in VLAN 20. `show interfaces Ethernet1/0 switchport` --
+           'Access Mode VLAN: 20'. `show vlan brief` lists Et1/0 under VLAN 20."
+    break:
+      - node: sw3
+        lines: ["interface Ethernet1/0", " switchport access vlan 20"]
+    fix:
+      - node: sw3
+        lines: ["interface Ethernet1/0", " switchport access vlan 10"]
+
+  # ---------------------------------------------------- EtherChannel (3.1.b)
+  - id: lacp-passive-passive
+    name: "Both ends of Po1 set to LACP passive"
+    topic: "3.1.b"
+    difficulty: med
+    symptom: "host-a cannot reach host-b at all. SW2 is completely cut off from
+              SW1 even though all three cables are fine, every port is up, and
+              both switches still have a full and apparently correct
+              EtherChannel configuration."
+    hint: "Read the member flags in `show etherchannel summary` rather than just
+           noting the channel is down -- the letter tells you what the ports are
+           waiting for. Then ask which LACP mode actually starts the
+           conversation."
+    explain: "LACP `active` SENDS LACPDUs to solicit a bundle; `passive` only
+              RESPONDS to them. Passive on both ends means nobody ever speaks and
+              the channel never forms -- the exact analogue of DTP's auto/auto
+              deadlock and of PAgP auto/auto. Three protocols, one idea: if both
+              ends only answer, nothing is ever asked.
+              **Verified on IOS-XE 17.16:** the members settle at **(w) --
+              'waiting to be aggregated'** and Po1 sits at **(SD)**. Crucially
+              they do **not** forward: a (w) port carries no user traffic, so the
+              link is fully down and host-a loses host-b entirely.
+              ⚠ **This corrects a widely repeated claim, including an earlier
+              draft of this lab's own documentation.** On many Catalyst
+              platforms a failed LACP negotiation drops the members into (I)
+              'stand-alone' and they forward INDIVIDUALLY -- spanning-tree
+              blocks all but one and the network keeps working at reduced
+              bandwidth, so the failure is invisible to users. That is a real
+              behaviour worth knowing, and it is the reason EtherChannel health
+              needs monitoring rather than waiting for a ticket. But it is NOT
+              what this platform does: IOL fails CLOSED, with (w) and no
+              forwarding. The transferable lesson is to read the actual flag
+              rather than assume which failure mode you are in -- (w), (I), (s)
+              and (D) mean four different things and only one of them keeps
+              traffic flowing."
+    find: "`show etherchannel summary` on sw1 AND sw2 -- Po1 is (SD) on both and
+           every member reads (w), not (P). `show lacp neighbor` for group 1 is
+           empty on both sides, which is the giveaway: each end is waiting for
+           LACPDUs the other will never send. `show run interface Ethernet0/1`
+           on both shows `channel-group 1 mode passive`."
+    break:
+      - node: sw1
+        lines: ["interface range Ethernet0/1 - 3", " channel-group 1 mode passive"]
+    fix:
+      - node: sw1
+        lines: ["interface range Ethernet0/1 - 3", " channel-group 1 mode active"]
+
+  - id: pagp-lacp-protocol-mismatch
+    name: "SW3 switched from PAgP to LACP on Po2"
+    topic: "3.1.b"
+    difficulty: med
+    symptom: "Po2 will not bundle. Both switches are configured with an
+              aggregation protocol and both are in an ACTIVE-style mode, so
+              neither end looks passive or misconfigured on its own."
+    hint: "Both ends want to bundle and both are actively trying. Look at WHAT
+           each one is speaking, not how eagerly."
+    explain: "PAgP is Cisco-proprietary, LACP is IEEE 802.3ad, and they are
+              mutually unintelligible -- SW1's PAgP packets mean nothing to
+              SW3's LACP process. The trap is that the mode keywords look
+              analogous: desirable/auto are PAgP's active/passive, and every
+              combination across the two protocols fails no matter how
+              'active' both sides are. Reading only the mode keyword tells you
+              nothing; you must read the protocol. `show etherchannel summary`
+              prints the protocol per group, which is the fastest comparison.
+              In a mixed-vendor network this is the argument for standardising
+              on LACP everywhere."
+    find: "`show etherchannel summary` -- sw1 says Protocol PAgP for group 2,
+           sw3 says LACP. `show pagp neighbor` on sw1 and `show lacp neighbor`
+           on sw3 are both empty: each is talking to something that never
+           answers."
+    break:
+      - node: sw3
+        lines: ["interface range Ethernet0/1 - 3", " no channel-group 2",
+                " channel-protocol lacp", " channel-group 2 mode active"]
+    fix:
+      - node: sw3
+        lines: ["interface range Ethernet0/1 - 3", " no channel-group 2",
+                " channel-protocol pagp", " channel-group 2 mode auto"]
+
+  - id: etherchannel-mode-on-mismatch
+    name: "SW1 forced to a static 'on' channel while SW2 still negotiates"
+    topic: "3.1.b"
+    difficulty: hard
+    symptom: "host-a cannot reach host-b. The two switches flatly disagree about
+              whether an EtherChannel exists: SW1 reports Po1 up and in use with
+              all three members bundled, SW2 reports Po1 DOWN. Nothing is
+              shut down and all six cables are fine."
+    hint: "One side stopped negotiating entirely. Run the same show command on
+           BOTH switches and compare -- including the Protocol column, not just
+           the port flags."
+    explain: "`channel-group N mode on` creates the bundle UNCONDITIONALLY with
+              no protocol and no negotiation: SW1 simply starts hashing frames
+              across three links and assumes the far end is doing the same. SW2,
+              still LACP passive, hears no LACPDUs and refuses -- **verified on
+              IOS-XE 17.16, SW2 marks all three members (s) = SUSPENDED and
+              holds Po1 at (SD)**, so nothing forwards and the VLANs go down.
+              Read the two outputs together: SW1 `Po1(SU)` Protocol `-` with
+              (P) members, SW2 `Po1(SD)` Protocol `LACP` with (s) members. The
+              exam point is that `mode on` works only if BOTH ends are `on`;
+              mixing it with active, passive, desirable or auto is always wrong.
+              ⚠ The textbook warning attached to this misconfiguration is that
+              it risks a BRIDGING LOOP -- SW1 seeing one logical port and
+              blocking nothing while SW2 sees three. That danger is real on
+              platforms whose members fall back to forwarding individually, but
+              **it does not occur here**: suspended ports do not forward, so
+              this topology fails closed rather than looping. Know the loop
+              argument for the exam, and know that the observable symptom on
+              this platform is an outage, not a storm.
+              ⚠ **This fault also needed correcting to fire at all**, and the
+              reason is worth more than the fault: `channel-protocol lacp` PINS
+              an interface to a protocol, so `channel-group 1 mode on` is
+              rejected with 'Command rejected: the interface can not be added to
+              the channel group' while it is set. IOS refuses only that one line
+              and accepts the preceding `no channel-group 1`, so the first
+              version of this fault quietly left the ports in NO channel group
+              -- a different bug, with no error visible unless you re-read the
+              running-config. You must `no channel-protocol` first."
+    find: "`show etherchannel summary` on sw1 AND sw2 -- the Protocol columns
+           disagree ('-' vs 'LACP') and sw2's members carry (s). `show lacp
+           neighbor` on sw2 is empty: it is waiting for LACPDUs that a static
+           channel never sends. `show run interface Ethernet0/1` on sw1 shows
+           `channel-group 1 mode on` with no `channel-protocol` line."
+    break:
+      # NOTE: ` no channel-protocol` is REQUIRED and is the whole reason this
+      # fault needed correcting. With `channel-protocol lacp` still on the
+      # interface, `channel-group 1 mode on` is refused with
+      #   "Command rejected: the interface can not be added to the channel group"
+      # -- and because IOS rejects only that ONE line, the earlier
+      # `no channel-group 1` still applied, leaving the ports in no channel at
+      # all. The first version of this fault did exactly that and silently
+      # produced a different bug from the one advertised.
+      - node: sw1
+        lines: ["interface range Ethernet0/1 - 3", " no channel-group 1",
+                " no channel-protocol",
+                " channel-group 1 mode on"]
+    fix:
+      - node: sw1
+        lines: ["interface range Ethernet0/1 - 3", " no channel-group 1",
+                " channel-protocol lacp", " channel-group 1 mode active"]
+
+  - id: member-config-divergence
+    name: "One Po1 member given a different allowed VLAN list"
+    topic: "3.1.b"
+    difficulty: hard
+    symptom: "See what actually happens -- this fault is here to test an
+              assumption. Check whether Et0/2 is still bundled in Po1 on SW1,
+              and whether the allowed VLAN list on that member ended up
+              differing from the Port-channel's at all."
+    hint: "Try to predict the result before you look. Does IOS let a member's
+           switchport configuration drift away from its Port-channel?"
+    explain: "The textbook rule is that every member of an EtherChannel must
+              agree on speed, duplex, trunk mode, native VLAN and allowed VLAN
+              list, and that a member which disagrees is SUSPENDED from the
+              bundle (flagged (s) in `show etherchannel summary`). That rule is
+              real and worth knowing cold for the exam. **But verified on
+              IOS-XE 17.16, this particular fault does NOT reproduce it:** once
+              a port is a member of a Port-channel, IOS keeps the member's
+              switchport configuration SYNCHRONISED with the Port-channel, so
+              changing `switchport trunk allowed vlan` on the member alone is
+              either rejected or immediately overwritten -- the divergence the
+              fault tries to create never exists, and nothing breaks. The
+              lesson is genuinely useful: member/Port-channel mismatch is a
+              problem when you configure ports BEFORE bundling them (which is
+              why the baseline configures all three members identically and adds
+              `channel-group` last), not something you can create afterwards.
+              If a member ever does show (s), suspect speed/duplex or a config
+              applied while the port was outside the group."
+    find: "`show etherchannel summary` on sw1 -- Et0/2 is still (P). Compare
+           `show run interface Ethernet0/2` with `show run interface
+           Port-channel1`: they still match. `show interfaces trunk` is
+           unchanged, and host-a still pings host-b."
+    break:
+      - node: sw1
+        lines: ["interface Ethernet0/2", " switchport trunk allowed vlan 20,99"]
+    fix:
+      - node: sw1
+        lines: ["interface Ethernet0/2", " switchport trunk allowed vlan 10,20,99"]
+
+  # ------------------------------------------------ L2 filtering / port security
+  - id: vacl-drops-vlan10
+    name: "A VLAN access-map silently drops VLAN 10 traffic on SW3"
+    topic: "3.1.a"
+    difficulty: hard
+    symptom: "host-a cannot ping host-b. Every single infrastructure check
+              passes: both bundles (SU) with all members (P), both trunks
+              carrying 10,20,99, VLAN 10 active in every database, host-b's
+              access port correctly in VLAN 10. host-c is unaffected."
+    hint: "You have verified the path is built correctly end to end, and it is.
+           So stop checking whether the frames CAN cross, and start asking
+           whether something is choosing to discard them once they do."
+    explain: "A VLAN access-map (VACL) filters traffic WITHIN a VLAN, including
+              switched traffic that never touches a router. That makes it
+              invisible to every trunk, EtherChannel and VLAN command you would
+              normally use -- the L2 path is genuinely perfect, and the frames
+              are dropped after arriving. Two things make this the hardest fault
+              here: nothing in `show interfaces`, `show vlan`, `show interfaces
+              trunk` or `show etherchannel summary` changes at all, and the
+              filter is configured in three separate places (`ip access-list`,
+              `vlan access-map`, `vlan filter`) so a partial `show run` grep can
+              easily miss it. The general rule: when the topology checks out but
+              traffic still dies, look for a POLICY -- VACL, port ACL, port
+              security, storm control or a protected port. `show vlan filter`
+              is a one-line check and belongs in your standard L2
+              troubleshooting sweep precisely because nothing else reveals it."
+    find: "`show vlan filter` on sw3 -- 'VLAN Map DROP-USERS is filtering VLANs:
+           10'. Then `show vlan access-map DROP-USERS` shows the drop action and
+           `show ip access-list MATCH-USERS` the matched subnet."
+    break:
+      - node: sw3
+        lines: ["ip access-list extended MATCH-USERS",
+                " permit ip 10.10.10.0 0.0.0.255 any", "exit",
+                "vlan access-map DROP-USERS 10",
+                " match ip address MATCH-USERS", " action drop", "exit",
+                "vlan access-map DROP-USERS 20", " action forward", "exit",
+                "vlan filter DROP-USERS vlan-list 10"]
+    fix:
+      - node: sw3
+        lines: ["no vlan filter DROP-USERS vlan-list 10",
+                "no vlan access-map DROP-USERS 10",
+                "no vlan access-map DROP-USERS 20",
+                "no ip access-list extended MATCH-USERS"]
+
+  - id: port-security-violation
+    name: "Port security pinned to the wrong MAC err-disables host-a's port"
+    topic: "3.1.a"
+    difficulty: med
+    symptom: "host-a is completely offline -- it cannot ping anything at all.
+              The rest of the lab is perfectly healthy and host-b/host-c are
+              unaffected. SW2's port to host-a is DOWN despite nothing being
+              shut down and the container still running."
+    hint: "The port went down by itself. A port that a switch disables on
+           purpose has a distinctive status -- and the switch will tell you what
+           it objected to if you ask the right feature."
+    explain: "Port security was enabled with a maximum of one MAC address and a
+              STATIC entry for a MAC that does not exist. The moment host-a
+              sends its next frame, the switch sees an unauthorised source MAC,
+              and the default violation action -- `shutdown` -- puts the port
+              into err-disabled. Three things to take away. First, the port
+              stays UP until the host transmits, so a violation-based fault can
+              lie dormant. Second, err-disable is a LATCHED state: it is not
+              cleared by removing the cause. Third, and the reason this fault's
+              `fix` is deliberately NOT a pure inverse of its `break`: undoing
+              the port-security configuration alone leaves the port err-disabled
+              forever. The fix must also bounce the interface (`shutdown` /
+              `no shutdown`) to release the latch -- or you configure
+              `errdisable recovery cause psecure-violation` in advance. That
+              asymmetry is the lesson: removing a cause does not undo an
+              effect."
+    find: "`show interfaces Ethernet1/0 status` on sw2 -- 'err-disabled'. `show
+           port-security interface Ethernet1/0` gives it away completely: Port
+           Status 'Secure-shutdown', a Security Violation Count of 1, and the
+           offending 'Last Source Address:Vlan'. `show errdisable recovery`
+           shows the cause."
+    break:
+      - node: sw2
+        lines: ["interface Ethernet1/0", " switchport port-security",
+                " switchport port-security maximum 1",
+                " switchport port-security mac-address 0000.dead.beef"]
+    fix:
+      - node: sw2
+        lines: ["interface Ethernet1/0",
+                " no switchport port-security mac-address 0000.dead.beef",
+                " no switchport port-security maximum 1",
+                " no switchport port-security",
+                " shutdown", " no shutdown"]

@@ -1,0 +1,255 @@
+{
+  "freeTextAnnotations": [
+    {
+      "id": "freeText_stp_title",
+      "text": "Spanning Tree · RSTP / MST / guards  —  TWO loops, TWO MST instances, TWO different trees",
+      "position": {
+        "x": 95,
+        "y": 30
+      },
+      "fontSize": 14,
+      "fontColor": "#ffffff",
+      "fontWeight": "bold",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_stp_sw1",
+      "text": "SW1 · IST(MST0) + MSTI1 ROOT · priority 4096",
+      "position": {
+        "x": 300,
+        "y": 108
+      },
+      "fontSize": 12,
+      "fontColor": "#00ff88",
+      "fontWeight": "bold",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_stp_sw3",
+      "text": "SW3 · MSTI2 ROOT · priority 4096",
+      "position": {
+        "x": 560,
+        "y": 262
+      },
+      "fontSize": 12,
+      "fontColor": "#d4ff00",
+      "fontWeight": "bold",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_stp_sw2",
+      "text": "SW2 · IST/MSTI1 backup · 8192",
+      "position": {
+        "x": 118,
+        "y": 262
+      },
+      "fontSize": 12,
+      "fontColor": "#ffffff",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_stp_rootguard",
+      "text": "ROOT GUARD on both downlinks →\nan access switch must never become root",
+      "position": {
+        "x": 300,
+        "y": 322
+      },
+      "fontSize": 11,
+      "fontColor": "#ff004c",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "center",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_stp_sw4",
+      "text": "SW4 · access · never root · LOOP GUARD on both uplinks\nMSTI1 (VLAN 10) via E0/1  ·  MSTI2 (VLAN 20) via E0/2\n↑ both uplinks carry traffic — that is the point of MST",
+      "position": {
+        "x": 250,
+        "y": 452
+      },
+      "fontSize": 12,
+      "fontColor": "#00b3ff",
+      "fontWeight": "normal",
+      "fontStyle": "normal",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_stp_region",
+      "text": "MST region \"ENCOR\", revision 1 — name + revision + VLAN map are hashed\ninto one DIGEST. Any difference and the switch drops out of the region.",
+      "position": {
+        "x": 95,
+        "y": 560
+      },
+      "fontSize": 12,
+      "fontColor": "#ffffff",
+      "fontWeight": "normal",
+      "fontStyle": "italic",
+      "textDecoration": "none",
+      "textAlign": "left",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_stp_loop1",
+      "text": "LOOP 1 · distribution triangle",
+      "position": {
+        "x": 300,
+        "y": 218
+      },
+      "fontSize": 11,
+      "fontColor": "#ff8c00",
+      "fontWeight": "normal",
+      "fontStyle": "italic",
+      "textDecoration": "none",
+      "textAlign": "center",
+      "fontFamily": "Arial"
+    },
+    {
+      "id": "freeText_stp_loop2",
+      "text": "LOOP 2 · dual uplinks",
+      "position": {
+        "x": 318,
+        "y": 372
+      },
+      "fontSize": 11,
+      "fontColor": "#ff8c00",
+      "fontWeight": "normal",
+      "fontStyle": "italic",
+      "textDecoration": "none",
+      "textAlign": "center",
+      "fontFamily": "Arial"
+    }
+  ],
+  "freeShapeAnnotations": [
+    {
+      "id": "freeShape_stp_loop1",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 130,
+        "y": 130
+      },
+      "width": 460,
+      "height": 160,
+      "fillColor": "#ff8c00",
+      "fillOpacity": 0.1,
+      "borderColor": "#ff8c00",
+      "borderWidth": 1,
+      "borderStyle": "dashed",
+      "rotation": 0,
+      "zIndex": -1
+    },
+    {
+      "id": "freeShape_stp_loop2",
+      "shapeType": "rectangle",
+      "position": {
+        "x": 130,
+        "y": 292
+      },
+      "width": 460,
+      "height": 150,
+      "fillColor": "#00b3ff",
+      "fillOpacity": 0.1,
+      "borderColor": "#00b3ff",
+      "borderWidth": 1,
+      "borderStyle": "dashed",
+      "rotation": 0,
+      "zIndex": -1
+    }
+  ],
+  "trafficRateAnnotations": [],
+  "groupStyleAnnotations": [],
+  "networkNodeAnnotations": [],
+  "nodeAnnotations": [
+    {
+      "id": "host-b",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 250,
+        "y": 60
+      },
+      "icon": "server"
+    },
+    {
+      "id": "host-d",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 470,
+        "y": 60
+      },
+      "icon": "server"
+    },
+    {
+      "id": "sw1",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 360,
+        "y": 150
+      },
+      "icon": "switch"
+    },
+    {
+      "id": "sw2",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 190,
+        "y": 290
+      },
+      "icon": "switch"
+    },
+    {
+      "id": "sw3",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 530,
+        "y": 290
+      },
+      "icon": "switch"
+    },
+    {
+      "id": "sw4",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 360,
+        "y": 420
+      },
+      "icon": "switch"
+    },
+    {
+      "id": "host-a",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 250,
+        "y": 520
+      },
+      "icon": "server"
+    },
+    {
+      "id": "host-c",
+      "interfacePattern": "e0/{n}",
+      "position": {
+        "x": 470,
+        "y": 520
+      },
+      "icon": "server"
+    }
+  ],
+  "edgeAnnotations": [],
+  "aliasEndpointAnnotations": [],
+  "viewerSettings": {}
+}

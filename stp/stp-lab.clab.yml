@@ -1,0 +1,145 @@
+# =============================================================================
+#  CCNP ENCORE — Spanning Tree Study Lab (RSTP, MST, and the guards)
+# =============================================================================
+#
+#  Purpose: practice spanning tree on Cisco IOL from a clean slate. The startup
+#  configs apply ONLY hostnames and interface descriptions -- no VLANs, no
+#  trunks, no STP tuning, no guards. Every port boots as a default access port
+#  in VLAN 1 running the default rapid-pvst. You build every concept by hand.
+#  See README.md.
+#
+#  Blueprint: 3.1.c (RSTP, MST, and enhancements: root guard, BPDU guard,
+#                    loop guard, BPDU filter, PortFast)
+#
+#  Topology -- TWO loops on purpose
+#  --------------------------------
+#     host-b VLAN10 10.10.10.12        host-d VLAN20 10.10.20.14
+#              \                        /
+#            E0/3                    E1/0
+#              +------------------------+
+#              |          SW1           |   IST(MST0) + MSTI1 ROOT
+#              +------------------------+
+#                E0/1              E0/2
+#                  |                 |
+#                  |                 |
+#                E0/1              E0/1
+#          +-----------+       +-----------+
+#          |    SW2    |-E0/2--|    SW3    |   MSTI2 ROOT
+#          +-----------+ E0/2  +-----------+
+#                E0/3              E0/3
+#                  |                 |
+#                  |                 |
+#                E0/1              E0/2
+#              +------------------------+
+#              |          SW4           |   access
+#              +------------------------+
+#            E0/3                    E1/0
+#              /                        \
+#     host-a VLAN10 10.10.10.11        host-c VLAN20 10.10.20.13
+#
+#  Loop 1: SW1 - SW2 - SW3 - SW1        (the distribution triangle)
+#  Loop 2: SW2 - SW4 - SW3 - SW2        (the access switch's dual uplinks)
+#
+#  Two loops means spanning tree has real work to do, and -- crucially -- the
+#  two MST instances can pick DIFFERENT trees. MSTI1 (VLAN 10) roots at SW1,
+#  MSTI2 (VLAN 20) roots at SW3, so SW4 reaches the two VLANs over DIFFERENT
+#  uplinks. That divergence is the whole point of MST and is what makes the
+#  per-instance faults observable.
+#
+#  Each host pair spans the topology (one behind SW4, one behind SW1) so a ping
+#  actually traverses the spanning tree rather than staying on one switch.
+#
+#  Interface map (containerlab ethX -> IOL EthernetY/Z, E0/0 = mgmt):
+#    eth1 -> Ethernet0/1    eth3 -> Ethernet0/3
+#    eth2 -> Ethernet0/2    eth4 -> Ethernet1/0
+# =============================================================================
+name: stp-lab
+
+topology:
+  nodes:
+    # ---- Distribution / core ----
+    sw1:                                  # IST + MSTI1 root
+      kind: cisco_iol
+      type: l2
+      image: vrnetlab/cisco_iol:L2-17.16.01
+      labels:
+        topoViewer-role: switch
+      startup-config: configs/sw1.partial.cfg
+
+    sw2:                                  # IST + MSTI1 secondary root
+      kind: cisco_iol
+      type: l2
+      image: vrnetlab/cisco_iol:L2-17.16.01
+      labels:
+        topoViewer-role: switch
+      startup-config: configs/sw2.partial.cfg
+
+    sw3:                                  # MSTI2 root
+      kind: cisco_iol
+      type: l2
+      image: vrnetlab/cisco_iol:L2-17.16.01
+      labels:
+        topoViewer-role: switch
+      startup-config: configs/sw3.partial.cfg
+
+    # ---- Access ----
+    sw4:                                  # dual-homed to SW2 and SW3
+      kind: cisco_iol
+      type: l2
+      image: vrnetlab/cisco_iol:L2-17.16.01
+      labels:
+        topoViewer-role: switch
+      startup-config: configs/sw4.partial.cfg
+
+    # ---- End hosts, on ACCESS ports (untagged) ----
+    host-a:                               # VLAN 10, behind SW4
+      kind: linux
+      image: wbitt/network-multitool
+      labels:
+        topoViewer-role: server
+      exec:
+        - ip addr add 10.10.10.11/24 dev eth1
+        - ip link set eth1 up
+
+    host-b:                               # VLAN 10, behind SW1
+      kind: linux
+      image: wbitt/network-multitool
+      labels:
+        topoViewer-role: server
+      exec:
+        - ip addr add 10.10.10.12/24 dev eth1
+        - ip link set eth1 up
+
+    host-c:                               # VLAN 20, behind SW4
+      kind: linux
+      image: wbitt/network-multitool
+      labels:
+        topoViewer-role: server
+      exec:
+        - ip addr add 10.10.20.13/24 dev eth1
+        - ip link set eth1 up
+
+    host-d:                               # VLAN 20, behind SW1
+      kind: linux
+      image: wbitt/network-multitool
+      labels:
+        topoViewer-role: server
+      exec:
+        - ip addr add 10.10.20.14/24 dev eth1
+        - ip link set eth1 up
+
+  links:
+    # ---- Distribution triangle (loop 1) ----
+    - endpoints: ["sw1:eth1", "sw2:eth1"]
+    - endpoints: ["sw1:eth2", "sw3:eth1"]
+    - endpoints: ["sw2:eth2", "sw3:eth2"]
+
+    # ---- SW4's dual uplinks (loop 2) ----
+    - endpoints: ["sw2:eth3", "sw4:eth1"]
+    - endpoints: ["sw3:eth3", "sw4:eth2"]
+
+    # ---- Access ports ----
+    - endpoints: ["sw1:eth3", "host-b:eth1"]
+    - endpoints: ["sw1:eth4", "host-d:eth1"]
+    - endpoints: ["sw4:eth3", "host-a:eth1"]
+    - endpoints: ["sw4:eth4", "host-c:eth1"]
